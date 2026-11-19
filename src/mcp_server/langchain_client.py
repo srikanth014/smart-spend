@@ -14,15 +14,18 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
+from langchain_core.tools import BaseTool
 from langchain.mcp import MCPAdapter
 from langchain.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
 
 # Load environment variables from .env file
 load_dotenv()
 
 MCP_SERVER_URL = "http://127.0.0.1:8000/mcp"
 CATEGORIES_PATH = Path(__file__).with_name("categories.json")
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 def check_environment() -> tuple[str, str]:
@@ -35,23 +38,45 @@ def check_environment() -> tuple[str, str]:
         SystemExit: If GROQ_API_KEY is not configured.
     """
     api_key = os.getenv("GROQ_API_KEY", "").strip()
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+    model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip()
 
     if not api_key:
         print("\n[Configuration Error] GROQ_API_KEY is not set.")
         print("Please configure your .env file:")
         print("  1. Copy .env.example to .env:  cp .env.example .env")
         print("  2. Add your Groq API key:      GROQ_API_KEY=gsk_...")
-        print("  3. (Optional) Set your model:   GROQ_MODEL=llama-3.3-70b-versatile\n")
+        print(f"  3. (Optional) Set your model:   GROQ_MODEL={DEFAULT_GROQ_MODEL}\n")
         sys.exit(1)
 
     return api_key, model
 
 
+def create_expense_agent(
+    tools: list[BaseTool],
+    model_name: str,
+    checkpointer: InMemorySaver | None = None,
+) -> CompiledStateGraph:
+    """Create the SmartSpend LangChain agent for the given MCP tools."""
+    category_definitions = json.loads(CATEGORIES_PATH.read_text(encoding="utf-8"))
+    model = init_chat_model(model_name, model_provider="groq")
+    return create_agent(
+        model=model,
+        tools=tools,
+        system_prompt=(
+            "You are SmartSpend, a helpful personal expense tracking assistant. "
+            "You can add, update, delete, get, list, and summarize expenses using "
+            "your available tools. When recording an expense, select a category "
+            "and subcategory from this list: "
+            f"{json.dumps(category_definitions)}. Always confirm recorded or "
+            "changed amounts, dates, and categories clearly."
+        ),
+        checkpointer=checkpointer,
+    )
+
+
 async def run_agent() -> None:
     """Initialize and run the interactive LangChain agent session."""
     _, model_name = check_environment()
-    category_definitions = json.loads(CATEGORIES_PATH.read_text(encoding="utf-8"))
 
     print("=" * 60)
     print("Initializing SmartSpend AI Agent (Groq + FastMCP)")
@@ -69,24 +94,9 @@ async def run_agent() -> None:
             for tool in tools:
                 print(f" - {getattr(tool, 'name', tool)}")
 
-            # Initialize Groq chat model
-            model = init_chat_model(
+            agent = create_expense_agent(
+                tools,
                 model_name,
-                model_provider="groq",
-            )
-
-            # Create agent with memory checkpointer
-            agent = create_agent(
-                model=model,
-                tools=tools,
-                system_prompt=(
-                    "You are SmartSpend, a helpful personal expense tracking assistant. "
-                    "You can add expenses, list expenses over a date range, and summarize "
-                    "spending by category using your available tools. When recording an "
-                    "expense, select a category and subcategory from this list: "
-                    f"{json.dumps(category_definitions)}. Always confirm recorded "
-                    "amounts, dates, and categories clearly."
-                ),
                 checkpointer=InMemorySaver(),
             )
 
