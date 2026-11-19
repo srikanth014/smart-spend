@@ -47,7 +47,7 @@ Run the Streamlit dashboard with charts and the conversational assistant:
 uv run streamlit run src/mcp_server/dashboard.py
 ```
 
-The dashboard uses the same SQLite database and in-process MCP tools, so it does not require the separate MCP HTTP server to be running. Its main page has the expense chat, current-month spending metrics and category totals, plus a six-month spending trend. Add expenses or ask questions in chat; set `GROQ_API_KEY` in `.env` to enable it. The `smartspend-agent` CLI remains available.
+The dashboard uses the same SQLite database and in-process MCP tools, so it does not require the separate MCP HTTP server to be running. It opens in dark mode and includes monthly spending metrics, spending by category, and a daily trend for the selected year. Use the month selector to review recent months; the trend's range slider lets you scroll through the year's daily spending. The expense assistant is below the analytics and can add expenses or answer questions. Set `GROQ_API_KEY` in `.env` to enable chat. If an expense date omits the year, the assistant uses the current year. The `smartspend-agent` CLI remains available.
 
 ## MCP tools and resource
 

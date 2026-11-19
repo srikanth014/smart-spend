@@ -18,7 +18,7 @@ from mcp_server.langchain_client import DEFAULT_GROQ_MODEL, create_expense_agent
 from mcp_server.server import mcp
 
 DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
-CHAT_PANEL_HEIGHT = 320
+CHAT_PANEL_HEIGHT = 400
 EMPTY_CHAT_PANEL_HEIGHT = 130
 load_dotenv(DOTENV_PATH)
 
@@ -35,20 +35,23 @@ def _shift_month(month: date, offset: int) -> date:
     return date(year, zero_based_month + 1, 1)
 
 
-def _monthly_totals(
+def _daily_totals(
     expenses: list[dict[str, Any]],
-    first_month: date,
-    month_count: int,
+    first_day: date,
+    last_day: date,
 ) -> list[dict[str, Any]]:
-    months = [_shift_month(first_month, offset) for offset in range(month_count)]
-    totals = {month.strftime("%Y-%m"): 0.0 for month in months}
+    days = [
+        first_day + timedelta(days=offset)
+        for offset in range((last_day - first_day).days + 1)
+    ]
+    totals = {day: 0.0 for day in days}
     for expense in expenses:
-        month_key = str(expense["date"])[:7]
-        if month_key in totals:
-            totals[month_key] += float(expense["amount"])
+        expense_day = date.fromisoformat(str(expense["date"]))
+        if expense_day in totals:
+            totals[expense_day] += float(expense["amount"])
     return [
-        {"month": month, "amount": totals[month.strftime("%Y-%m")]}
-        for month in months
+        {"day": day, "amount": amount}
+        for day, amount in totals.items()
     ]
 
 
@@ -91,11 +94,12 @@ def main() -> None:
         <style>
         [data-testid="stAppViewContainer"] {
             background:
-                radial-gradient(ellipse at 8% 0%, rgba(196, 236, 220, 0.55), transparent 34%),
-                radial-gradient(ellipse at 96% 8%, rgba(218, 231, 255, 0.55), transparent 30%),
-                #f6f8fb;
+                radial-gradient(ellipse at 8% 0%, rgba(31, 112, 103, 0.2), transparent 34%),
+                radial-gradient(ellipse at 96% 8%, rgba(56, 87, 136, 0.18), transparent 30%),
+                #0b1118;
         }
         [data-testid="stHeader"] { background: transparent; }
+        [data-testid="stToolbar"] { right: 1rem; }
         .main .block-container {
             max-width: 1180px;
             padding-top: 2rem;
@@ -107,10 +111,10 @@ def main() -> None:
             gap: 1.1rem;
             margin: 0.3rem 0 1.8rem;
             padding: 1.4rem 1.6rem;
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            border: 1px solid #263441;
             border-radius: 24px;
-            background: linear-gradient(115deg, rgba(255,255,255,.92), rgba(247,251,255,.83));
-            box-shadow: 0 14px 40px rgba(34, 54, 82, 0.07);
+            background: linear-gradient(115deg, rgba(20, 32, 42, .97), rgba(17, 26, 38, .94));
+            box-shadow: 0 16px 42px rgba(0, 0, 0, .22);
         }
         .smartspend-mark {
             display: grid;
@@ -119,67 +123,77 @@ def main() -> None:
             width: 54px;
             height: 54px;
             border-radius: 18px;
-            color: white;
-            background: linear-gradient(145deg, #087e72, #16a085);
+            color: #06120f;
+            background: linear-gradient(145deg, #55d6a5, #3aa98d);
             font-size: 1.7rem;
             font-weight: 750;
-            box-shadow: 0 8px 18px rgba(16, 145, 122, 0.2);
+            box-shadow: 0 8px 22px rgba(53, 191, 147, .18);
         }
         .smartspend-eyebrow {
-            color: #0c8978;
+            color: #65d8ae;
             font-size: .72rem;
             font-weight: 750;
             letter-spacing: .13em;
         }
         .smartspend-title {
             margin: .15rem 0;
-            color: #142a3b;
+            color: #edf4f7;
             font-size: clamp(1.65rem, 3vw, 2.25rem);
             font-weight: 760;
             letter-spacing: -.045em;
             line-height: 1.15;
         }
-        .smartspend-copy { color: #657587; font-size: .96rem; }
-        h2, h3, h4 { color: #1b3042; letter-spacing: -.025em; }
+        .smartspend-copy { color: #9aabb8; font-size: .96rem; }
+        h1, h2, h3, h4 { color: #e6edf3; letter-spacing: -.025em; }
+        [data-testid="stCaptionContainer"], [data-testid="stMarkdownContainer"] p {
+            color: #a7b5c2;
+        }
         [data-testid="stMetric"] {
             min-height: 112px;
             padding: 1.05rem 1.2rem;
-            border: 1px solid #e6ecf2;
+            border: 1px solid #263542;
             border-radius: 18px;
-            background: rgba(255,255,255,.9);
-            box-shadow: 0 8px 24px rgba(34, 54, 82, .045);
+            background: linear-gradient(145deg, #141f2a, #111a24);
+            box-shadow: 0 10px 26px rgba(0, 0, 0, .16);
         }
         [data-testid="stMetricLabel"] {
-            color: #657587;
+            color: #9aaab7;
             font-weight: 600;
         }
         [data-testid="stMetricValue"] {
-            color: #18384a;
+            color: #edf4f7;
             font-weight: 730;
             letter-spacing: -.035em;
         }
         [data-testid="stVerticalBlockBorderWrapper"] {
-            border-color: #e6ecf2;
+            border-color: #263542;
             border-radius: 20px;
-            background: rgba(255,255,255,.72);
-            box-shadow: 0 8px 24px rgba(34, 54, 82, .035);
+            background: rgba(17, 26, 36, .86);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, .15);
         }
         [data-testid="stChatMessage"] {
-            border: 1px solid #e8edf2;
+            border: 1px solid #2a3946;
             border-radius: 16px;
-            background: #fff;
+            background: #16212b;
         }
         [data-testid="stChatInput"] > div {
-            border-color: #dce5eb;
+            border-color: #344653;
             border-radius: 16px;
-            background: #fff;
-            box-shadow: 0 5px 16px rgba(34, 54, 82, .06);
+            background: #111a23;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
         }
+        [data-testid="stChatInput"] { margin-bottom: .75rem; }
         [data-testid="stChatInput"] textarea { font-size: .98rem; }
         [data-testid="stBaseButton-primary"] {
             border: 0;
             border-radius: 12px;
-            background: linear-gradient(120deg, #087e72, #14977f);
+            color: #06120f;
+            background: linear-gradient(120deg, #55d6a5, #3aa98d);
+        }
+        [data-testid="stAlert"] {
+            border: 1px solid #344653;
+            border-radius: 14px;
+            background: #141f2a;
         }
         @media (max-width: 640px) {
             .main .block-container { padding: 1rem 1rem 2rem; }
@@ -198,23 +212,48 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f"""
+        <style>
+        .st-key-expense-chat-panel {{
+            min-height: {EMPTY_CHAT_PANEL_HEIGHT}px;
+            max-height: {CHAT_PANEL_HEIGHT}px;
+            overflow-y: auto;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     today = date.today()
-    selected_month = today.replace(day=1)
-    month_end = _shift_month(selected_month, 1) - timedelta(days=1)
-    trend_month_count = 6
+    current_month = today.replace(day=1)
+    month_options = [_shift_month(current_month, -offset) for offset in range(12)]
+    heading_column, month_column = st.columns([3, 1])
+    with month_column:
+        selected_month = st.selectbox(
+            "Analytics month",
+            month_options,
+            format_func=lambda month: month.strftime("%B %Y"),
+            label_visibility="collapsed",
+        )
+    selected_month_end = min(
+        _shift_month(selected_month, 1) - timedelta(days=1),
+        today,
+    )
     month_expenses = database.list_expenses(
         selected_month.isoformat(),
-        month_end.isoformat(),
+        selected_month_end.isoformat(),
     )
-    trend_start = _shift_month(selected_month, -(trend_month_count - 1))
+    trend_start = date(selected_month.year, 1, 1)
+    year_end = date(selected_month.year, 12, 31)
+    trend_end = min(year_end, today)
     trend_expenses = database.list_expenses(
         trend_start.isoformat(),
-        month_end.isoformat(),
+        trend_end.isoformat(),
     )
     category_totals = database.summarize(
         selected_month.isoformat(),
-        month_end.isoformat(),
+        selected_month_end.isoformat(),
     )
 
     total_spent = sum(float(expense["amount"]) for expense in month_expenses)
@@ -222,13 +261,17 @@ def main() -> None:
     average_expense = total_spent / expense_count if expense_count else 0.0
     metric_columns = st.columns(3)
     with metric_columns[0]:
-        st.metric("Spent this month", f"₹{total_spent:,.2f}")
+        st.metric(
+            f"Spent in {selected_month.strftime('%B')}",
+            f"₹{total_spent:,.2f}",
+        )
     with metric_columns[1]:
         st.metric("Expenses", f"{expense_count}")
     with metric_columns[2]:
         st.metric("Average expense", f"₹{average_expense:,.2f}")
 
-    st.subheader(f"Analytics · {selected_month.strftime('%B %Y')}")
+    with heading_column:
+        st.subheader(f"Analytics · {selected_month.strftime('%B %Y')}")
     category_column, trend_column = st.columns(2)
     with category_column:
         with st.container(border=True):
@@ -241,15 +284,17 @@ def main() -> None:
                     orientation="h",
                     labels={"total_amount": "Amount (₹)", "category": "Category"},
                     text_auto=".2f",
-                    color_discrete_sequence=["#109681"],
-                    template="plotly_white",
+                    color_discrete_sequence=["#55d6a5"],
+                    template="plotly_dark",
                 )
                 category_chart.update_layout(
                     yaxis={"categoryorder": "total ascending"},
                     margin={"l": 8, "r": 8, "t": 12, "b": 8},
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
-                    font={"family": "Inter, sans-serif", "color": "#526477"},
+                    font={"family": "Inter, sans-serif", "color": "#b6c4ce"},
+                    xaxis={"gridcolor": "#263542", "zerolinecolor": "#344653"},
+                    yaxis_gridcolor="#263542",
                 )
                 st.plotly_chart(category_chart, width="stretch")
             else:
@@ -257,32 +302,42 @@ def main() -> None:
 
     with trend_column:
         with st.container(border=True):
-            st.markdown("#### Monthly trend")
-            trend_rows = _monthly_totals(
+            st.markdown(f"#### Daily trend · {selected_month.year}")
+            trend_rows = _daily_totals(
                 trend_expenses,
                 trend_start,
-                trend_month_count,
+                trend_end,
             )
             trend_chart = px.area(
                 trend_rows,
-                x="month",
+                x="day",
                 y="amount",
-                markers=True,
-                labels={"month": "Month", "amount": "Amount (₹)"},
+                labels={"day": "Day", "amount": "Amount (₹)"},
                 color_discrete_sequence=["#3289bd"],
-                template="plotly_white",
+                template="plotly_dark",
             )
             trend_chart.update_traces(
-                line={"color": "#3289bd", "width": 3},
-                fillcolor="rgba(50,137,189,.12)",
-                marker={"size": 8, "color": "#3289bd"},
+                line={"color": "#78a9ff", "width": 3},
+                fillcolor="rgba(120,169,255,.14)",
             )
             trend_chart.update_layout(
                 margin={"l": 8, "r": 8, "t": 12, "b": 8},
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"family": "Inter, sans-serif", "color": "#526477"},
+                font={"family": "Inter, sans-serif", "color": "#b6c4ce"},
                 hovermode="x unified",
+                xaxis={
+                    "gridcolor": "#263542",
+                    "zerolinecolor": "#344653",
+                    "tickformat": "%b",
+                    "rangeslider": {
+                        "visible": True,
+                        "bgcolor": "#141f2a",
+                        "bordercolor": "#344653",
+                        "thickness": 0.12,
+                    },
+                },
+                yaxis={"gridcolor": "#263542", "zerolinecolor": "#344653"},
             )
             st.plotly_chart(trend_chart, width="stretch")
 
@@ -295,12 +350,7 @@ def main() -> None:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    chat_panel_height = (
-        CHAT_PANEL_HEIGHT
-        if st.session_state.chat_history
-        else EMPTY_CHAT_PANEL_HEIGHT
-    )
-    with st.container(height=chat_panel_height, border=True):
+    with st.container(height="content", border=True, key="expense-chat-panel"):
         if not st.session_state.chat_history:
             st.caption("Ask about your spending or tell me about an expense to add.")
         for message in st.session_state.chat_history:

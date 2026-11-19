@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -59,6 +60,7 @@ def create_expense_agent(
     """Create the SmartSpend LangChain agent for the given MCP tools."""
     category_definitions = json.loads(CATEGORIES_PATH.read_text(encoding="utf-8"))
     model = init_chat_model(model_name, model_provider="groq")
+    today = date.today()
     return create_agent(
         model=model,
         tools=tools,
@@ -67,7 +69,11 @@ def create_expense_agent(
             "You can add, update, delete, get, list, and summarize expenses using "
             "your available tools. When recording an expense, select a category "
             "and subcategory from this list: "
-            f"{json.dumps(category_definitions)}. Always confirm recorded or "
+            f"{json.dumps(category_definitions)}. The current date is "
+            f"{today.isoformat()}. Resolve relative dates using this date. "
+            f"When a user gives a calendar date without a year, use the current "
+            f"year ({today.year}) and pass the tool date in YYYY-MM-DD format. "
+            "Always confirm recorded or "
             "changed amounts, dates, and categories clearly."
         ),
         checkpointer=checkpointer,
